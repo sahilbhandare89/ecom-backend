@@ -44,6 +44,13 @@ public class Product {
     private Date releaseDate;
     private boolean productAvailable;
     private int availableQuantity;
+
+
+    @ManyToOne
+    @JoinColumn(name = "category_id")
+    private Category category;
+
+
     private String imagename;
     private String imagetype;
     @Lob

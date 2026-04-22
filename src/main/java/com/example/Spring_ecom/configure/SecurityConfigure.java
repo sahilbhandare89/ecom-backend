@@ -43,15 +43,18 @@ public class SecurityConfigure {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         .requestMatchers("/api/auth/login",
-                                                  "/api/users/register",
-                                                  "/api/product/**")
-                        .permitAll() // ✅ fixed
+                                "/api/users/register",
+                                "/api/product/**",
+                                "/api/category/**",
+                                "/api/categories/**",
+                                "/api/admin/**"
+                        ).permitAll()
+
                         .requestMatchers("/api/cart/**").authenticated()
-                        // ✅ ADMIN ONLY APIs
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .anyRequest()
-                        .authenticated()
+
+                        .anyRequest().permitAll()   // ✅ VERY IMPORTANT
                 )
 
                 .sessionManagement(session ->
@@ -59,10 +62,8 @@ public class SecurityConfigure {
                 )
 
                 .authenticationProvider(authenticationProvider())
-
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .cors(Customizer.withDefaults())
-
 
                 .build();
     }

@@ -46,6 +46,7 @@ public class ProductController {
     }
 
     // ✅ ADD product with image
+    //for admin only
     @PostMapping(value = "/admin/product", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> addProduct(
             @RequestPart("product") String productJson,
@@ -60,6 +61,7 @@ public class ProductController {
     }
 
     // ✅ UPDATE product
+    //For admin only
     @PutMapping(value = "/admin/product/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> updateProduct(
             @PathVariable int id,
@@ -85,5 +87,10 @@ public class ProductController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(product.getImagetype()))
                 .body(product.getImagepath());
+    }
+
+    @GetMapping("/category/{name}")
+    public ResponseEntity<List<Product>> getByCategory(@PathVariable String name) {
+        return ResponseEntity.ok(productService.getProductsByCategory(name));
     }
 }

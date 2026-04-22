@@ -2,7 +2,9 @@ package com.example.Spring_ecom.service;
 
 import com.example.Spring_ecom.dto.PaginatedResponse;
 import com.example.Spring_ecom.dto.ProductResponse;
+import com.example.Spring_ecom.model.Category;
 import com.example.Spring_ecom.model.Product;
+import com.example.Spring_ecom.repo.CtegoryRepo;
 import com.example.Spring_ecom.repo.ProductRepo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -18,6 +20,8 @@ public class ProductService {
 
     @Autowired
     private ProductRepo productRepo;
+    @Autowired
+    private CtegoryRepo ctegoryRepo;
 
     public PaginatedResponse<ProductResponse> getAllProducts(Pageable pageable) {
 
@@ -53,11 +57,31 @@ public class ProductService {
 //        return productRepo.save(product);
 //    }
 
+//    public Product addProduct(Product product, MultipartFile image) throws IOException {
+//
+//        product.setImagename(image.getOriginalFilename());
+//        product.setImagetype(image.getContentType());
+//        product.setImagepath(image.getBytes());
+//
+//        return productRepo.save(product);
+//    }
+
     public Product addProduct(Product product, MultipartFile image) throws IOException {
 
+        // Set image fields
         product.setImagename(image.getOriginalFilename());
         product.setImagetype(image.getContentType());
         product.setImagepath(image.getBytes());
+
+        // Fetch category from DB using incoming category id
+        if (product.getCategory() != null && product.getCategory().getId() != null) {
+            Long categoryId = product.getCategory().getId();
+
+            Category category = ctegoryRepo.findById(categoryId)
+                    .orElseThrow(() -> new RuntimeException("Category not found"));
+
+            product.setCategory(category); // ✅ VERY IMPORTANT
+        }
 
         return productRepo.save(product);
     }
@@ -88,6 +112,10 @@ public class ProductService {
     public Product getImage(int id) {
         return productRepo.findById((long) id)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
+    }
+
+    public List<Product> getProductsByCategory(String categoryName) {
+        return productRepo.findByCategory_NameIgnoreCase(categoryName);
     }
 
 
