@@ -48,11 +48,13 @@ public class SecurityConfigure {
                                 "/api/users/register",
                                 "/api/product/**",
                                 "/api/category/**",
-                                "/api/categories/**",
-                                "/api/admin/**"
+                                "/api/categories/**"
                         ).permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         .requestMatchers("/api/cart/**").authenticated()
+                        .requestMatchers("/api/addresses/**").authenticated()
+                        .requestMatchers("/api/orders/**").authenticated()
 
                         .anyRequest().permitAll()   // ✅ VERY IMPORTANT
                 )

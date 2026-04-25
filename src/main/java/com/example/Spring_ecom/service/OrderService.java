@@ -1,103 +1,145 @@
 package com.example.Spring_ecom.service;
 
-import com.example.Spring_ecom.model.Order;
-import com.example.Spring_ecom.model.OrderItem;
-import com.example.Spring_ecom.model.Product;
-import com.example.Spring_ecom.model.dto.*;
-import com.example.Spring_ecom.repo.OrderRepo;
-import com.example.Spring_ecom.repo.ProductRepo;
+import com.example.Spring_ecom.dto.OrderRequest;
+import com.example.Spring_ecom.dto.OrderResponse;
+import com.example.Spring_ecom.exception.ResourceNotFoundException;
+import com.example.Spring_ecom.model.*;
+import com.example.Spring_ecom.repo.*;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
 
-    @Autowired
-    private OrderRepo orderRepo;
+    private final OrderRepo orderRepo;
+    private final UserRepo userRepo;
+    private final AddressRepo addressRepo;
+    private final CartRepo cartRepo;
 
-    @Autowired
-    private ProductRepo productRepo;
-
+    // -- Place Order --------------------------------------------
     @Transactional
-    public OrderResponse placeOrder(OrderRequest request) {
+    public OrderResponse placeOrder(String username, OrderRequest request) {
 
-        if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new RuntimeException("Order items cannot be empty");
-        }
+        // 1. Get user
+        User user = userRepo.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        Order order = new Order();
-        order.setOrderDate(LocalDateTime.now());
+        // 2. Get cart
+        Cart cart = cartRepo.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
 
-        List<OrderItem> orderItems = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<CartItem> cartItems = cart.getItems();
+        if (cartItems.isEmpty())
+            throw new ResourceNotFoundException("Cart is empty. Add items before placing order.");
 
-        for (OrderItemRequest itemReq : request.getItems()) {
+        // 3. Get shipping address
+        Address address = addressRepo.findById(request.getAddressId())
+                .orElseThrow(() -> new ResourceNotFoundException("Address not found"));
 
-            Product product = productRepo.findById(Long.valueOf(itemReq.getProductId()))
-                    .orElseThrow(() -> new RuntimeException(
-                            "Product not found with ID: " + itemReq.getProductId()));
+        // 4. Build order items from cart
+        List<OrderItem> orderItems = cartItems.stream()
+                .map(cartItem -> OrderItem.builder()
+                        .product(cartItem.getProduct())
+                        .quantity(cartItem.getQuantity())
+                        .priceAtPurchase(cartItem.getPrice())  // ✅ use CartItem.price
+                        .build())
+                .toList();
 
-            OrderItem item = new OrderItem();
-            item.setProduct(product);
-            item.setQuantity(itemReq.getQuantity());
+        // 5. Calculate total
+        BigDecimal total = orderItems.stream()
+                .map(OrderItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            BigDecimal price = product.getPrice()
-                    .multiply(BigDecimal.valueOf(itemReq.getQuantity()));
+        // 6. Build order
+        Order order = Order.builder()
+                .user(user)
+                .shippingAddress(address)
+                .orderItems(orderItems)
+                .totalAmount(total)
+                .status(OrderStatus.PENDING)
+                .paymentMethod(request.getPaymentMethod())
+                .paymentStatus(PaymentStatus.PENDING)
+                .build();
 
-//            item.setPrice(price);
-            item.setOrder(order);
+        // 7. Link each item back to the order
+        orderItems.forEach(item -> item.setOrder(order));
 
-            totalAmount = totalAmount.add(price);
-            orderItems.add(item);
-        }
+        // 8. Save order (cascades to order items)
+        Order saved = orderRepo.save(order);
 
-        order.setOrderItems(orderItems);
-        order.setTotalAmount(totalAmount);
+        // 9. Clear cart
+        cart.getItems().clear();
+        cartRepo.save(cart);
 
-        orderRepo.save(order);
 
-        OrderResponse response = new OrderResponse();
-        response.setOrderId(order.getId());
-        response.setTotalAmount(totalAmount);
-        response.setMessage("Order placed successfully");
-
-        return response;
+        return toResponse(saved);
     }
 
-    public List<OrderHistoryResponse> getAllOrders() {
+    // -- Get My Orders -----------------------------------------
+    @Transactional
+    public List<OrderResponse> getOrdersByUser(String username) {
+        User user = userRepo.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        return orderRepo.findByUser(user)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
 
-        List<Order> orders = orderRepo.findAll();
+    // -- Get Order By ID -----------------------------------------
+    @Transactional
+    public OrderResponse getOrderById(String username, Long orderId) {
+        User user = userRepo.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Order order = orderRepo.findByIdAndUser(orderId, user)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+        return toResponse(order);
+    }
 
-        return orders.stream().map(order -> {
+    // -- Cancel Order -------------------------------------------
+    @Transactional
+    public OrderResponse cancelOrder(String username, Long orderId) {
+        User user = userRepo.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Order order = orderRepo.findByIdAndUser(orderId, user)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-            OrderHistoryResponse res = new OrderHistoryResponse();
-            res.setOrderId(order.getId());
-            res.setTotalAmount(order.getTotalAmount().doubleValue());
-            res.setOrderDate(order.getOrderDate().toLocalDate());
-            res.setStatus("PLACED");
+        if (order.getStatus() == OrderStatus.DELIVERED)
+            throw new RuntimeException("Delivered orders cannot be cancelled");
+        if (order.getStatus() == OrderStatus.CANCELLED)
+            throw new RuntimeException("Order is already cancelled");
 
-            // ✅ MAP ORDER ITEMS
-            List<OrderItemResponse> items = order.getOrderItems().stream()
-                    .map(item -> new OrderItemResponse(
-                            item.getProduct().getName(),
-                            item.getQuantity(),
-                            item.getPrice()
-                    ))
-                    .toList();
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setPaymentStatus(PaymentStatus.REFUNDED);
+        return toResponse(orderRepo.save(order));
+    }
 
-            res.setItems(items);
+    // -- toResponse mapper ----------------------------------------
+    private OrderResponse toResponse(Order order) {
+        List<OrderResponse.OrderItemResponse> itemResponses = order.getOrderItems()
+                .stream()
+                .map(item -> OrderResponse.OrderItemResponse.builder()
+                        .productId(item.getProduct().getId())
+                        .productName(item.getProduct().getName())
+                        .quantity(item.getQuantity())
+                        .priceAtPurchase(item.getPriceAtPurchase())
+                        .subtotal(item.getSubtotal())
+                        .build())
+                .toList();
 
-            return res;
-
-        }).toList();
+        return OrderResponse.builder()
+                .id(order.getId())
+                .orderDate(order.getOrderDate())
+                .totalAmount(order.getTotalAmount())
+                .status(order.getStatus())
+                .paymentStatus(order.getPaymentStatus())
+                .paymentMethod(order.getPaymentMethod())
+                .items(itemResponses)
+                .build();
     }
 }

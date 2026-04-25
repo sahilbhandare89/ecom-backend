@@ -1,12 +1,11 @@
 package com.example.Spring_ecom.model;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -14,6 +13,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 @Table(name = "orders")
 public class Order {
 
@@ -21,15 +21,37 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // ── Timestamps ───────────────────────────────────────────
+    @CreationTimestamp
     private LocalDateTime orderDate;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
+
+    // ── Order Details ────────────────────────────────────────
     private BigDecimal totalAmount;
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private OrderStatus status;      // PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+
+    // ── Relationships ────────────────────────────────────────
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "address_id", nullable = false)
+    private Address shippingAddress;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> orderItems;
 
-    public void setOrderCode(String orderCode) {
-    }
+    // ── Payment ──────────────────────────────────────────────
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus paymentStatus;   // PENDING, PAID, FAILED, REFUNDED
 
-    public void setStatus(String placed) {
-    }
+    private String paymentMethod;          // UPI, CARD, COD, NETBANKING
+
+    private String transactionId;
 }
