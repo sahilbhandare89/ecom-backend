@@ -17,14 +17,15 @@ public class MyUserDetailService implements UserDetailsService {
 
         // 🔍 Fetch user from DB
         User user = userRepo.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
-        // ✅ Return Spring Security User
+        // ✅ Map DB role to Spring Authority
+        // If your DB stores "ADMIN", this sets the authority to "ADMIN"
         return org.springframework.security.core.userdetails.User
                 .builder()
                 .username(user.getUsername())
                 .password(user.getPassword())
-                .authorities("USER") // role
+                .authorities(user.getRole()) // Use the role from your User model
                 .build();
     }
 }

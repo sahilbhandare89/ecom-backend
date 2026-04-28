@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 @Service
@@ -32,54 +33,31 @@ public class CartService {
     @Autowired
     private UserRepo userRepo;
 
+
+    // -- find the cart by username -----------------------------------------
     public Cart getCartByUsername(String username) {
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+
         return cartRepo.findByUserId(user.getId())
+
                 .orElseGet(() -> {
+
                     Cart newCart = new Cart();
                     newCart.setUser(user);
                     return cartRepo.save(newCart);
                 });
     }
 
-//    public Cart addItemToCart(String username, Long productId, int quantity) {
-//
-//        User user = userRepo.findByUsername(username)
-//                .orElseThrow(() -> new RuntimeException("User not found"));
-//
-//        Cart cart = cartRepo.findByUserId(user.getId())
-//                .orElseGet(() -> {
-//                    Cart newCart = new Cart();
-//                    newCart.setUser(user);
-//                    return cartRepo.save(newCart);
-//                });
-//
-//        Product product = productRepo.findById(productId)
-//                .orElseThrow(() -> new RuntimeException("Product not found"));
-//
-//        Optional<CartItem> existingItem =
-//                cartItemRepo.findByCartIdAndProductId(cart.getId(), productId);
-//
-//        if (existingItem.isPresent()) {
-//            CartItem item = existingItem.get();
-//            item.setQuantity(item.getQuantity() + quantity);
-//            cartItemRepo.save(item);
-//        } else {
-//            CartItem newItem = new CartItem();
-//            newItem.setCart(cart);
-//            newItem.setProduct(product);
-//            newItem.setQuantity(quantity);
-//            newItem.setPrice(product.getPrice());
-//
-//            cartItemRepo.save(newItem);
-//        }
-//
-//        return cart;
-//    }
 
+    // -- user can add product to the cart -------------------------------------------
     public Cart addToCart(String username, AddToCartRequest request) {
+
+        if (request.getQuantity() <= 0) {
+            throw new RuntimeException("Invalid quantity. You must add at least 1 item.");
+        }
+
 
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -94,6 +72,16 @@ public class CartService {
         Product product = productRepo.findById(request.getProductId())
                 .orElseThrow(() -> new RuntimeException("Product not found"));
 
+        // Check if product is even marked as available
+        if (!product.isProductAvailable()) {
+            throw new RuntimeException("This product is currently out of stock.");
+        }
+
+        // Check if we have enough stock for the request
+        if (product.getAvailableQuantity() < request.getQuantity()) {
+            throw new RuntimeException("Only " + product.getAvailableQuantity() + " items left in stock.");
+        }
+
         // Check if product already exists in cart
         Optional<CartItem> existingItem = cart.getItems().stream()
                 .filter(item -> item.getProduct().getId().equals(product.getId()))
@@ -101,20 +89,33 @@ public class CartService {
 
         if (existingItem.isPresent()) {
             CartItem item = existingItem.get();
-            item.setQuantity(item.getQuantity() + request.getQuantity());
+
+            // -- Update the TOTAL quantity
+            int updatedQuantity = item.getQuantity() + request.getQuantity();
+            item.setQuantity(updatedQuantity);
+
+            // -- Multiply unit price by the NEW total quantity
+            BigDecimal unitPrice = item.getProduct().getPrice();
+            item.setPrice(unitPrice.multiply(BigDecimal.valueOf(updatedQuantity)));
+
         } else {
             CartItem item = new CartItem();
             item.setCart(cart);
             item.setProduct(product);
             item.setQuantity(request.getQuantity());
-            item.setPrice(product.getPrice());
+
+            BigDecimal newPrice = product.getPrice().multiply(BigDecimal.valueOf(request.getQuantity()));
+            item.setPrice(newPrice);
 
             cart.getItems().add(item);
         }
 
+
+
         return cartRepo.save(cart);
     }
 
+    // -- user can remove prodyuct from the cart------------------------------------------------
     public Cart removeFromCart(String username, AddToCartRequest request) {
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -128,10 +129,19 @@ public class CartService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Product not in cart"));
 
-        // Logic: Decrement quantity or remove completely
+
+        // -- Logic: Decrement quantity or remove completely--
         if (itemToRemove.getQuantity() > request.getQuantity()) {
-            itemToRemove.setQuantity(itemToRemove.getQuantity() - request.getQuantity());
-        } else {
+            // 1. Update Quantity
+            int newQuantity = itemToRemove.getQuantity() - request.getQuantity();
+            itemToRemove.setQuantity(newQuantity);
+
+            // -- decrement price --
+
+            BigDecimal unitPrice = itemToRemove.getProduct().getPrice();
+            itemToRemove.setPrice(unitPrice.multiply(BigDecimal.valueOf(newQuantity)));
+
+        }else {
             // If removing more than or equal to what is there, delete the item
             cart.getItems().remove(itemToRemove);
         }

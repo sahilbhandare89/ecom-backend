@@ -6,6 +6,8 @@ import com.example.Spring_ecom.model.Category;
 import com.example.Spring_ecom.model.Product;
 import com.example.Spring_ecom.repo.CtegoryRepo;
 import com.example.Spring_ecom.repo.ProductRepo;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,12 +18,15 @@ import java.io.IOException;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class ProductService {
 
     @Autowired
     private ProductRepo productRepo;
     @Autowired
     private CtegoryRepo ctegoryRepo;
+
+    private final CtegoryRepo categoryRepo;
 
     public PaginatedResponse<ProductResponse> getAllProducts(Pageable pageable) {
 
@@ -68,12 +73,17 @@ public class ProductService {
 
     public Product addProduct(Product product, MultipartFile image) throws IOException {
 
-        // Set image fields
+        // 1.Set image fields
         product.setImagename(image.getOriginalFilename());
         product.setImagetype(image.getContentType());
         product.setImagepath(image.getBytes());
 
-        // Fetch category from DB using incoming category id
+
+        if (product.getAvailableQuantity() < 0) {
+            throw new RuntimeException("Initial stock cannot be negative");
+        }
+
+        // 2.Fetch category from DB using incoming category id
         if (product.getCategory() != null && product.getCategory().getId() != null) {
             Long categoryId = product.getCategory().getId();
 
@@ -81,31 +91,49 @@ public class ProductService {
                     .orElseThrow(() -> new RuntimeException("Category not found"));
 
             product.setCategory(category); // ✅ VERY IMPORTANT
+
         }
+        // 3. Set Availability Status automatically based on quantity
+        product.setProductAvailable(product.getAvailableQuantity() > 0);
+
 
         return productRepo.save(product);
     }
 
-    public Product updateProduct(int id, Product product, MultipartFile image) throws IOException {
+    @Transactional
+    public Product updateProduct(Long id, Product product, MultipartFile image) throws IOException {
 
-        Product existingProduct = productRepo.findById((long) id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+        // 1. Fetch existing product
+        Product existingProduct = productRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Product not found with id: " + id));
 
-        // 🔥 Update normal fields
+        // 2. Map Basic Fields (Check for nulls if necessary)
         existingProduct.setName(product.getName());
         existingProduct.setBrand(product.getBrand());
         existingProduct.setDescription(product.getDescription());
         existingProduct.setPrice(product.getPrice());
-//        existingProduct.setStockQuantity(product.getStockQuantity());
         existingProduct.setReleaseDate(product.getReleaseDate());
+        existingProduct.setAvailableQuantity(product.getAvailableQuantity());
 
-        // 🔥 Update image only if new image is sent
+        // Auto-calculate availability
+        existingProduct.setProductAvailable(product.getAvailableQuantity() > 0);
+
+        // 3. Robust Category Update
+        // Check product.getCategory() != null first to avoid NullPointerException
+        if (product.getCategory() != null && product.getCategory().getId() != null) {
+            Category category = categoryRepo.findById(product.getCategory().getId())
+                    .orElseThrow(() -> new RuntimeException("Category not found with ID: " + product.getCategory().getId()));
+            existingProduct.setCategory(category);
+        }
+
+        // 4. Update Image only if a new one is provided
         if (image != null && !image.isEmpty()) {
             existingProduct.setImagename(image.getOriginalFilename());
             existingProduct.setImagetype(image.getContentType());
             existingProduct.setImagepath(image.getBytes());
         }
 
+        // 5. Final Save
         return productRepo.save(existingProduct);
     }
 
@@ -116,6 +144,10 @@ public class ProductService {
 
     public List<Product> getProductsByCategory(String categoryName) {
         return productRepo.findByCategory_NameIgnoreCase(categoryName);
+    }
+
+    public List<Product> getProductsByPriceRange(double min, double max) {
+        return productRepo.findByPriceBetweenOrderByPriceAsc(min, max);
     }
 
 

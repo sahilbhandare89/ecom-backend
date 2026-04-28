@@ -5,6 +5,7 @@ import com.example.Spring_ecom.dto.ProductResponse;
 import com.example.Spring_ecom.model.Product;
 import com.example.Spring_ecom.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper; // ✅ correct
+import io.jsonwebtoken.io.IOException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -64,14 +65,34 @@ public class ProductController {
     //For admin only
     @PutMapping(value = "/admin/product/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> updateProduct(
-            @PathVariable int id,
+            @PathVariable Long id, // Changed to Long to match Entity
             @RequestPart("product") Product product,
             @RequestPart(value = "image", required = false) MultipartFile image) {
         try {
+            // Ensure the ID from the URL is the one being used
             Product updated = productService.updateProduct(id, product, image);
             return ResponseEntity.ok(updated);
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(e.getMessage());
+
+        } catch (RuntimeException e) {
+            // Check if it's a "Not Found" case
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+            }
+            return ResponseEntity.badRequest().body(e.getMessage());
+
+        } catch (java.io.IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Image upload failed: " + e.getMessage());
+        }catch (Exception e) {
+            // This will catch the Hibernate, Jackson, and Logic errors
+            Throwable rootCause = e;
+            while (rootCause.getCause() != null) {
+                rootCause = rootCause.getCause();
+            }
+            System.err.println("🔥 REAL ERROR: " + rootCause.getMessage());
+            rootCause.printStackTrace();
+
+            return ResponseEntity.status(500).body("Backend Error: " + rootCause.getMessage());
         }
     }
 
@@ -92,5 +113,13 @@ public class ProductController {
     @GetMapping("/category/{name}")
     public ResponseEntity<List<Product>> getByCategory(@PathVariable String name) {
         return ResponseEntity.ok(productService.getProductsByCategory(name));
+    }
+
+    @GetMapping("/price-range")
+    public List<Product> getProductsByPriceRange(
+            @RequestParam double min,
+            @RequestParam double max) {
+
+        return productService.getProductsByPriceRange(min, max);
     }
 }

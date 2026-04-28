@@ -24,6 +24,7 @@ public class CartController {
                 .getAuthentication()
                 .getName();
 
+
         Cart cart = cartService.getCartByUsername(username);
 
         return ResponseEntity.ok(cart);

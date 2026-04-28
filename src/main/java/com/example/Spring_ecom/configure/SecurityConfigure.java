@@ -50,7 +50,7 @@ public class SecurityConfigure {
                                 "/api/category/**",
                                 "/api/categories/**"
                         ).permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
 
                         .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/addresses/**").authenticated()
