@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   mysql:
@@ -7,12 +5,18 @@ services:
     container_name: mysql-db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: ecom_db
+      MYSQL_ROOT_PASSWORD: "#Sahil@123"
+      MYSQL_DATABASE: spring_ecom
     ports:
-      - "3306:3306"
+      - "3307:3306"    # ✅ Changed 3306 to 3307 on host side
     volumes:
       - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p#Sahil@123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   app:
     build: .
@@ -22,11 +26,13 @@ services:
       - "8080:8080"
     environment:
       DB_HOST: mysql
-      DB_NAME: ecom_db
+      DB_NAME: spring_ecom
       DB_USERNAME: root
-      DB_PASSWORD: root
+      DB_PASSWORD: "#Sahil@123"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
+    command: ["sh", "-c", "sleep 20 && java -jar /app/app.jar"]
 
 volumes:
   mysql-data:
