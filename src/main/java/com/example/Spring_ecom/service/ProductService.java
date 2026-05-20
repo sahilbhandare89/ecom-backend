@@ -10,7 +10,9 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,10 +23,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProductService {
 
-    @Autowired
-    private ProductRepo productRepo;
-    @Autowired
-    private CtegoryRepo ctegoryRepo;
+
+    private final ProductRepo productRepo;
+    private final CtegoryRepo ctegoryRepo;
 
     private final CtegoryRepo categoryRepo;
 
@@ -148,6 +149,35 @@ public class ProductService {
 
     public List<Product> getProductsByPriceRange(double min, double max) {
         return productRepo.findByPriceBetweenOrderByPriceAsc(min, max);
+    }
+
+
+    public Page<Product> searchProducts(String keyword, int page, int size) {
+
+        // sanitize keyword
+        String sanitizedKeyword =
+                (keyword == null) ? "" : keyword.trim();
+
+        // prevent negative page number
+        if (page < 0) {
+            page = 0;
+        }
+
+        // limit page size
+        if (size <= 0 || size > 50) {
+            size = 10;
+        }
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.ASC, "name")
+        );
+
+        return productRepo.searchEntireDB(
+                sanitizedKeyword,
+                pageable
+        );
     }
 
 

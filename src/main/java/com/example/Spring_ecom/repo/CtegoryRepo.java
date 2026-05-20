@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface CtegoryRepo extends JpaRepository<Category,Long> {
 
     Optional<Category> findByName(String name);
+
+
 }

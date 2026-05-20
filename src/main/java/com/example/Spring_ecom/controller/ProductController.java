@@ -122,4 +122,29 @@ public class ProductController {
 
         return productService.getProductsByPriceRange(min, max);
     }
+
+
+    // -- Search Product ------------------------------------------------------
+    @GetMapping("/product/search")
+    public ResponseEntity<Page<Product>> searchProducts(
+
+            @RequestParam String keyword,
+
+            @RequestParam(defaultValue = "0")
+            int page,
+
+            @RequestParam(defaultValue = "10")
+            int size
+    ) {
+
+        // validate keyword
+        if (keyword == null || keyword.trim().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        Page<Product> products =
+                productService.searchProducts(keyword, page, size);
+
+        return ResponseEntity.ok(products);
+    }
 }
